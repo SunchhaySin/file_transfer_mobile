@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_transfer_mobile/utils/socket_test.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,10 +17,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  final listener = TcpListenerTest(); // inilialize the TcpListneterTest
+
+  @override
+  void initState() {
+    super.initState();
+    listener.start();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blueGrey.shade200,
+      backgroundColor: Colors.green.shade200,
       body: SafeArea(
         child: Column(
           children: [
@@ -142,8 +151,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: EdgeInsets.all(8.0),
                 margin: EdgeInsets.all(8.0),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(35),
-                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(30),
+                  color: Colors.white.withOpacity(0.65),
                 ),
                 child: Column(
                   children: [
@@ -197,15 +206,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     Divider(color: Colors.black12, height: 4),
 
-                    Text("Options"),
+                    SizedBox(height: 10),
 
-                    SizedBox(height: 20),
+                    Container(
+                      width: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade300,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.green.shade200,
+                            spreadRadius: 1,
+                            blurRadius: 3,
+                          ),
+                        ],
+                      ),
 
+                      padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.upload_sharp, size: 26),
+                          SizedBox(width: 12),
+                          Text(
+                            "Upload Files",
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-                    Column(
-                      children: [
-                        Icon(Icons.upload_sharp)
-                      ],)
+                    SizedBox(height: 4),
+
+                    Text(
+                      "Maximum File Size: 1GB",
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ),
