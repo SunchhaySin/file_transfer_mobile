@@ -1,18 +1,21 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:file_transfer_mobile/utils/socket_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_transfer_mobile/utils/peer_discovery.dart';
 import 'package:file_transfer_mobile/dialogs/peer_selection.dart';
+import 'package:file_transfer_mobile/providers/peer_provider.dart';
+import 'package:file_transfer_mobile/widgets/uploaded_file_tile.dart';
+import 'package:file_transfer_mobile/utils/internet_connectivity.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool isInternet = false;
 
   void toggleInternetMode() {
@@ -21,31 +24,26 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  final listener = TcpListenerTest(); // inilialize the TcpListneterTest
-  PeerDiscovery? peerDiscovery;
-  List<Peer> peers = []; // store discovered peers
-
   List<PlatformFile> uploadData = []; // stores the user uploaded file / media
+  final internetConnectivity = InternetConnectivity(); // initialized internetConnectivty check to check for a internet connection in the app
 
   @override
   void initState() {
     super.initState();
-    _setup();
+    Future.microtask(() => ref.read(peerProvider.notifier).start());
+    _setupInternetCheck();
   }
 
-  Future<void> _setup() async {
-    await listener.start(); // bind socket first, so we know the real port
+  Future<void> _setupInternetCheck() async {
+    internetConnectivity.onModeChanged = (isOnline) {
+      if (!mounted) return;
 
-    final deviceId =
-        'device-${DateTime.now().millisecondsSinceEpoch}'; // simple unique-ish ID for now
-
-    peerDiscovery = PeerDiscovery(myDeviceId: deviceId, myPort: listener.port!);
-    peerDiscovery!.onPeersChanged = (updatedPeers) {
-      setState(() => peers = updatedPeers);
+      setState(() {
+        isInternet = isOnline;
+      });
     };
 
-    await peerDiscovery!.start();
-    setState(() {}); // refresh UI once port is known
+    await internetConnectivity.start();
   }
 
   Future<void> _connectToPeer(Peer peer) async {
@@ -57,20 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       print('Connected to ${peer.name}!');
       socket.add('hello from device'.codeUnits);
-    } catch (e) {
-      print('Connection failed: $e');
-    }
-  }
-
-  Future<void> testConnect(String ip, int port) async {
-    try {
-      final socket = await Socket.connect(
-        ip,
-        port,
-        timeout: Duration(seconds: 5),
-      );
-      print('Connected!');
-      socket.add('hello from device B'.codeUnits);
     } catch (e) {
       print('Connection failed: $e');
     }
@@ -119,39 +103,21 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return;
     }
-    print('Opening dialog with peers: ${peers.map((p) => p.name).toList()}');
-    PeerSelectionDialog(peers: peers).openDialog(context);
-  }
-
-  // Return the matching Icon for each file/media type
-  IconData _iconForExtension(String? extension) {
-    switch (extension?.toLowerCase()) {
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'heic':
-        return Icons.image_outlined;
-      case 'mov':
-      case 'mp4':
-        return Icons.videocam_outlined;
-      case 'pdf':
-        return Icons.picture_as_pdf_outlined;
-      case 'zip':
-        return Icons.folder_zip_outlined;
-      default:
-        return Icons.insert_drive_file_outlined;
-    }
+    final uploadedExtensions = uploadData.map((u) => u.extension).toList(); // collects all the uploaded file data by their extensions
+    PeerSelectionDialog(uploadsByExtensions: uploadedExtensions).openDialog(context, ref);
   }
 
   @override
   void dispose() {
-    peerDiscovery?.stop();
-    listener.stop();
+    internetConnectivity.stop();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // final peers = ref.watch(peerProvider); // get discovered peers from peer provider
+    final port = ref.read(peerProvider.notifier).myPort; // get connected port
+
     return Scaffold(
       backgroundColor: Colors.green.shade200,
       body: SafeArea(
@@ -334,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(height: 10),
 
                     Text(
-                      'App listening on port: ${listener.port ?? "starting..."}',
+                      'App listening on port: ${port ?? "starting..."}',
                     ),
 
                     SizedBox(height: 10),
@@ -518,28 +484,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    // Expanded(
-                    //   child: ListView.builder(
-                    //     itemCount: peers.length,
-                    //     itemBuilder: (context, index) {
-                    //       final peer = peers[index];
-                    //       return ListTile(
-                    //         title: Text(peer.name),
-                    //         subtitle: Text('${peer.ip}:${peer.port}'),
-                    //         trailing: ElevatedButton(
-                    //           onPressed: () => _connectToPeer(peer),
-                    //           child: const Text('Connect'),
-                    //         ),
-                    //       );
-                    //     },
-                    //   ),
-                    // ),
+                    SizedBox(height: 20),
+
                     Expanded(
                       child: uploadData.isNotEmpty
                           ? ListView.builder(
                               itemCount: uploadData.length,
                               itemBuilder: (context, index) {
-                                
                                 const videoExtensions = {'mov', 'mp4'};
 
                                 final upload = uploadData[index];
@@ -551,22 +502,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   extension,
                                 );
 
-                                return ListTile(
-                                  title: Text(isImage ? "Image" : isVideo ? "Video" : upload.name),
-                                  subtitle: Text(
-                                    '${(upload.size / (1024 * 1024)).toStringAsFixed(2)} MB',
-                                  ), // convert bytes -> megabytes
-                                  trailing: InkWell(
-                                    onTap: () => _removeUpload(
-                                      upload,
-                                    ), // remove current uploaded item from uploadData list
-                                    child: Icon(
-                                      Icons.delete_outline,
-                                      color: Colors.red,
-                                    ),
-                                  ),
-                                  leading: Icon(_iconForExtension(extension), size: 28),
-                                );
+                                return UploadedFileTile(
+                                  key: ValueKey(upload.path),
+                                  uploadName: isImage
+                                      ? "Image"
+                                      : isVideo
+                                      ? "Video"
+                                      : upload.name,
+                                  uploadSize:
+                                      '${(upload.size / (1024 * 1024)).toStringAsFixed(2)} MB',
+                                  uploadExtension: upload.extension ?? "",
+                                  onTap: () => _removeUpload(upload),
+                                ); // remove current uploaded item from uploadData list,);
                               },
                             )
                           : SizedBox.shrink(),
