@@ -1,14 +1,21 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:file_transfer_mobile/utils/socket_test.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_transfer_mobile/utils/peer_discovery.dart';
+import 'package:file_transfer_mobile/dialogs/peer_selection.dart';
+import 'package:file_transfer_mobile/providers/peer_provider.dart';
+import 'package:file_transfer_mobile/widgets/uploaded_file_tile.dart';
+import 'package:file_transfer_mobile/utils/internet_connectivity.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool isInternet = false;
 
   void toggleInternetMode() {
@@ -17,16 +24,100 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  final listener = TcpListenerTest(); // inilialize the TcpListneterTest
+  List<PlatformFile> uploadData = []; // stores the user uploaded file / media
+  final internetConnectivity = InternetConnectivity(); // initialized internetConnectivty check to check for a internet connection in the app
 
   @override
   void initState() {
     super.initState();
-    listener.start();
+    Future.microtask(() => ref.read(peerProvider.notifier).start());
+    _setupInternetCheck();
+  }
+
+  Future<void> _setupInternetCheck() async {
+    internetConnectivity.onModeChanged = (isOnline) {
+      if (!mounted) return;
+
+      setState(() {
+        isInternet = isOnline;
+      });
+    };
+
+    await internetConnectivity.start();
+  }
+
+  Future<void> _connectToPeer(Peer peer) async {
+    try {
+      final socket = await Socket.connect(
+        peer.ip,
+        peer.port,
+        timeout: const Duration(seconds: 5),
+      );
+      print('Connected to ${peer.name}!');
+      socket.add('hello from device'.codeUnits);
+    } catch (e) {
+      print('Connection failed: $e');
+    }
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['zip', 'pdf', 'png', 'jpg', 'jpeg'],
+      allowMultiple: false,
+      withData: false,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      setState(() {
+        uploadData.add(result.files.first);
+      });
+    }
+  }
+
+  Future<void> _pickMedia() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.media,
+      allowMultiple: false,
+      withData: false,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      setState(() {
+        uploadData.add(result.files.first);
+      });
+    }
+  }
+
+  void _removeUpload(PlatformFile upload) {
+    setState(() {
+      uploadData.removeWhere((f) => f.path == upload.path);
+    });
+  }
+
+  // Open the peer dialog for peer selection
+  void openPeerSelectionDialog(context) {
+    if (uploadData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text("No files or media selected!")),
+      );
+      return;
+    }
+    final uploadedExtensions = uploadData.map((u) => u.extension).toList(); // collects all the uploaded file data by their extensions
+    PeerSelectionDialog(uploadsByExtensions: uploadedExtensions).openDialog(context, ref);
+  }
+
+  @override
+  void dispose() {
+    internetConnectivity.stop();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // final peers = ref.watch(peerProvider); // get discovered peers from peer provider
+    final port = ref.read(peerProvider.notifier).myPort; // get connected port
+
     return Scaffold(
       backgroundColor: Colors.green.shade200,
       body: SafeArea(
@@ -208,31 +299,117 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     SizedBox(height: 10),
 
-                    Container(
-                      width: 200,
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade300,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.green.shade200,
-                            spreadRadius: 1,
-                            blurRadius: 3,
-                          ),
-                        ],
-                      ),
+                    Text(
+                      'App listening on port: ${port ?? "starting..."}',
+                    ),
 
-                      padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    SizedBox(height: 10),
+
+                    Text(
+                      "Select File or Media for sharing",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    SizedBox(height: 5),
+
+                    Container(
+                      height: 100,
+                      width: 302,
+                      decoration: BoxDecoration(
+                        border: BoxBorder.all(color: Colors.black54),
+                        borderRadius: BorderRadius.circular(26),
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.upload_sharp, size: 26),
-                          SizedBox(width: 12),
-                          Text(
-                            "Upload Files",
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
+                          GestureDetector(
+                            onTap: () => _pickFile(),
+                            child: Container(
+                              width: 150,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.only(
+                                  topLeft: Radius.circular(26),
+                                  bottomLeft: Radius.circular(26),
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.upload_file_outlined,
+                                        size: 26,
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text(
+                                        "File",
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  Text(
+                                    "(ZIP, PDF, PNG, JPG)",
+                                    style: TextStyle(
+                                      color: Colors.green.shade900,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          GestureDetector(
+                            onTap: () => _pickMedia(),
+                            child: Container(
+                              width: 150,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.only(
+                                  topRight: Radius.circular(26),
+                                  bottomRight: Radius.circular(26),
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.image_outlined, size: 26),
+                                      SizedBox(width: 12),
+                                      Text(
+                                        "Media",
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    "(Photos & Videos)",
+                                    style: TextStyle(
+                                      color: Colors.green.shade900,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -248,20 +425,103 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontSize: 13,
                       ),
                     ),
+
+                    SizedBox(height: 12),
+
+                    GestureDetector(
+                      onTap: () =>
+                          openPeerSelectionDialog(context), // open peer dialog
+                      child: Container(
+                        width: 160,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(50),
+                          boxShadow: [
+                            BoxShadow(
+                              color: uploadData.isNotEmpty
+                                  ? Colors.green.shade600
+                                  : Colors.grey.shade700,
+                              spreadRadius: 1,
+                              blurRadius: 3,
+                            ),
+                          ],
+                          gradient: LinearGradient(
+                            colors: uploadData.isNotEmpty
+                                ? [
+                                    Colors.greenAccent.shade400,
+                                    Colors.green.shade500,
+                                  ]
+                                : [Colors.grey.shade300, Colors.grey.shade500],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.ios_share_outlined,
+                              color: uploadData.isNotEmpty
+                                  ? Colors.black
+                                  : Colors.black45,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              "Share",
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: uploadData.isNotEmpty
+                                    ? Colors.black
+                                    : Colors.black45,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 20),
+
+                    Expanded(
+                      child: uploadData.isNotEmpty
+                          ? ListView.builder(
+                              itemCount: uploadData.length,
+                              itemBuilder: (context, index) {
+                                const videoExtensions = {'mov', 'mp4'};
+
+                                final upload = uploadData[index];
+                                final extension =
+                                    upload.extension?.toLowerCase() ?? '';
+
+                                final isImage = extension == "heic";
+                                final isVideo = videoExtensions.contains(
+                                  extension,
+                                );
+
+                                return UploadedFileTile(
+                                  key: ValueKey(upload.path),
+                                  uploadName: isImage
+                                      ? "Image"
+                                      : isVideo
+                                      ? "Video"
+                                      : upload.name,
+                                  uploadSize:
+                                      '${(upload.size / (1024 * 1024)).toStringAsFixed(2)} MB',
+                                  uploadExtension: upload.extension ?? "",
+                                  onTap: () => _removeUpload(upload),
+                                ); // remove current uploaded item from uploadData list,);
+                              },
+                            )
+                          : SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),
             ),
-
-            // Container(
-            //   padding: EdgeInsets.all(10),
-            //   decoration: BoxDecoration(
-            //     borderRadius: BorderRadius.circular(28),
-            //     border:
-            //   ),
-            // )
-            // TextButton(onPressed: () {}, child: Text("Learn More")),
-            ElevatedButton(onPressed: () {}, child: Text("Learn More")),
           ],
         ),
       ),
