@@ -3,18 +3,20 @@ import 'package:bonsoir/bonsoir.dart';
 const String serviceType = '_p2ptransfer._tcp'; // match with the service name defined in info.plist
 
 class Peer {
-  final String name;
+  final String id;
+  final String deviceName;
   final String ip;
   final int port;
 
-  Peer({required this.name, required this.ip, required this.port});
+  Peer({required this.id, required this.deviceName, required this.ip, required this.port});
 
   @override
-  String toString() => '$name ($ip:$port)';
+  String toString() => '$deviceName [$id] ($ip:$port)';
 }
 
 class PeerDiscovery {
   final String myDeviceId;
+  final String myDeviceName;
   final int myPort;
 
   BonsoirBroadcast? _broadcast;
@@ -24,7 +26,7 @@ class PeerDiscovery {
 
   void Function(List<Peer>)? onPeersChanged;
 
-  PeerDiscovery({required this.myDeviceId, required this.myPort});
+  PeerDiscovery({required this.myDeviceId, required this.myDeviceName, required this.myPort});
 
   // Simutanously Broadcast and discover at the same time 
   Future<void> start() async {
@@ -37,6 +39,9 @@ class PeerDiscovery {
       name: myDeviceId,
       type: serviceType,
       port: myPort,
+      attributes: {
+        'deviceName': myDeviceName, 
+      },
     );
 
     _broadcast = BonsoirBroadcast(service: service);
@@ -56,14 +61,16 @@ class PeerDiscovery {
 
         case BonsoirDiscoveryServiceResolvedEvent():
           final resolved = event.service;
-          if (resolved == null) return;
           if (resolved.name == myDeviceId) return; 
 
-          final alreadyKnown = discoveredPeers.any((p) => p.name == resolved.name);
+          final alreadyKnown = discoveredPeers.any((p) => p.id == resolved.name);
           if (alreadyKnown) return;
 
+          final peerDeviceName = resolved.attributes['deviceName'] ?? 'Unknown Device';
+
           discoveredPeers.add(Peer(
-            name: resolved.name,
+            id: resolved.name, // the name attribute containes a numerical ID
+            deviceName: peerDeviceName,
             ip: resolved.host!,
             port: resolved.port,
           ));
@@ -71,7 +78,7 @@ class PeerDiscovery {
           break;
 
         case BonsoirDiscoveryServiceLostEvent():
-          discoveredPeers.removeWhere((p) => p.name == event.service.name);
+          discoveredPeers.removeWhere((p) => p.id == event.service.name);
           onPeersChanged?.call(discoveredPeers);
           break;
 
