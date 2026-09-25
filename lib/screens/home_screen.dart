@@ -1,9 +1,9 @@
-import 'dart:io';
+import 'package:file_transfer_mobile/providers/transfer_listener_provider.dart';
+import 'package:file_transfer_mobile/utils/identify_device.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_transfer_mobile/utils/file_saver.dart';
-import 'package:file_transfer_mobile/utils/peer_discovery.dart';
 import 'package:file_transfer_mobile/dialogs/peer_selection.dart';
 import 'package:file_transfer_mobile/providers/peer_provider.dart';
 import 'package:file_transfer_mobile/dialogs/transfer_request.dart';
@@ -29,25 +29,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<PlatformFile> uploadData = []; // stores the user uploaded file / media
-  final internetConnectivity =
-      InternetConnectivity(); // initialized internetConnectivty check to check for a internet connection in the app
+  final internetConnectivity = InternetConnectivity(); // check for a internet connection in the app
 
   @override
   void initState() {
     super.initState();
     // Future.microtask(() => ref.read(peerProvider.notifier).start());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startListeningForTransfers();
+      initailizeServices();
     });
     _setupInternetCheck();
   }
 
-  TransferProgressController? _progressController;
+  TransferProgressController? progressController;
+  int? port;
 
-  void _startListeningForTransfers() {
-    ref
-        .read(peerProvider.notifier)
-        .start(
+  void initailizeServices() async {
+    final identity = ref.read(deviceIdentityProvider);
+    port = await ref.read(transferListenerProvider.notifier).start(
           // 1. Consent Step
           onRequestConsent: (fileName, fileSize, deviceId, deviceName) async {
             if (!mounted) return false;
@@ -70,7 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 fileName: fileName,
                 fileSize: fileSize,
                 onReady: (controller) {
-                  _progressController = controller;
+                  progressController = controller;
                 },
               );
             }
@@ -80,7 +79,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           // 2. Stream Progress Updates -> Drives TransferProgressDialog
           onProgress: (progress) {
-            _progressController?.updateProgress(progress);
+            progressController?.updateProgress(progress);
           },
 
           // 3. Bytes Complete in RAM -> Close Progress Dialog & Open Save/Discard Dialog
@@ -88,8 +87,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             if (!mounted) return;
 
             // Dismiss the progress dialog
-            _progressController?.close();
-            _progressController = null;
+            progressController?.close();
+            progressController = null;
 
             // Pop up the Save / Discard Dialog
             final TransferCompleteChoice? choice =
@@ -112,6 +111,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             }
           },
         );
+        
+        // use the port returned from the listener to engage the peer discovery service
+        await ref.read(peerProvider.notifier).start(
+          deviceId: identity.id,
+          deviceName: identity.name,
+          port: port!,
+        );
   }
 
   Future<void> _setupInternetCheck() async {
@@ -124,20 +130,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     };
 
     await internetConnectivity.start();
-  }
-
-  Future<void> _connectToPeer(Peer peer) async {
-    try {
-      final socket = await Socket.connect(
-        peer.ip,
-        peer.port,
-        timeout: const Duration(seconds: 5),
-      );
-      print('Connected to ${peer.id}!');
-      socket.add('hello from device'.codeUnits);
-    } catch (e) {
-      print('Connection failed: $e');
-    }
   }
 
   Future<void> _pickFile() async {
@@ -195,13 +187,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     internetConnectivity.stop();
+    ref.read(peerProvider.notifier).stop();
+    ref.read(transferListenerProvider.notifier).stop();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     // final peers = ref.watch(peerProvider); // get discovered peers from peer provider
-    final port = ref.read(peerProvider.notifier).myPort; // get connected port
+    // final port = ref.read(peerProvider.notifier).myPort; // get connected port
 
     return Scaffold(
       backgroundColor: Colors.green.shade200,

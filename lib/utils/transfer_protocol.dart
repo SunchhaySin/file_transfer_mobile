@@ -3,15 +3,16 @@
 enum MessageType { handshake, fileMeta, fileChunk, transferComplete }
 
 /// Sent first, right after the socket connects.
-/// 
 Map<String, dynamic> buildHandshake({
   required String deviceId,
   String? deviceName,
+  required String pubicKey,
 }) {
   return {
     'type': 'handshake',
     'deviceId': deviceId,
     if (deviceName != null) 'deviceName': deviceName,
+    'publicKey': pubicKey,
   };
 }
 

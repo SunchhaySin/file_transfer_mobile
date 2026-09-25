@@ -11,11 +11,11 @@ enum SaveResult { savedToGallery, savedToFiles, cancelled, failed }
 class SafeFileSaver {
   SafeFileSaver._();
 
-  static const Set<String> _galImageExtensions = {
+  static const Set<String> imageExtensions = {
     'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp',
   };
 
-  static const Set<String> _galVideoExtensions = {
+  static const Set<String> videoExtensions = {
     'mp4', 'mov', 'm4v', '3gp',
   };
 
@@ -35,15 +35,15 @@ class SafeFileSaver {
     final messenger = ScaffoldMessenger.maybeOf(context);
 
     // ---- Parse file name (handles names with multiple dots) ----
-    final safeName = _sanitizeFileName(fileName);
+    final safeName = formatFileName(fileName);
     final dotIndex = safeName.lastIndexOf('.');
     final ext = dotIndex > 0 && dotIndex < safeName.length - 1
         ? safeName.substring(dotIndex + 1).toLowerCase().trim()
         : '';
     final nameWithoutExt = dotIndex > 0 ? safeName.substring(0, dotIndex) : safeName;
 
-    final isGalVideo = _galVideoExtensions.contains(ext);
-    final isGalImage = _galImageExtensions.contains(ext);
+    final isGalImage = imageExtensions.contains(ext);
+    final isGalVideo = videoExtensions.contains(ext);
 
     // ---- Spinner helpers ----
     var spinnerOpen = false;
@@ -203,7 +203,7 @@ class SafeFileSaver {
   // ---------------------------------------------------------------
   // Remove characters that are illegal in file names on some platforms
   // ---------------------------------------------------------------
-  static String _sanitizeFileName(String name) {
+  static String formatFileName(String name) {
     final cleaned = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
     return cleaned.isEmpty ? 'file' : cleaned;
   }

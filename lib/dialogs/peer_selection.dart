@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_transfer_mobile/utils/identify_device.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_transfer_mobile/providers/peer_provider.dart';
@@ -162,7 +163,7 @@ class PeerSelectionDialog {
                                   );
 
                                   return SizedBox(
-                                    height: 20, 
+                                    height: 20,
                                     child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
@@ -198,7 +199,7 @@ class PeerSelectionDialog {
                                   );
                                 },
                               ),
-                              SizedBox(height: 6,),
+                              SizedBox(height: 6),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -272,16 +273,9 @@ class PeerSelectionDialog {
                                                         transferProvider
                                                             .notifier,
                                                       );
-                                                  final myDeviceId = ref
-                                                      .read(
-                                                        peerProvider.notifier,
-                                                      )
-                                                      .myDeviceId;
-                                                  final myDeviceName = ref
-                                                      .read(
-                                                        peerProvider.notifier,
-                                                      )
-                                                      .deviceName;
+                                                  final identity = ref.read(
+                                                    deviceIdentityProvider,
+                                                  );
                                                   final peer = selectedPeer;
 
                                                   Navigator.pop(dialogContext);
@@ -296,10 +290,9 @@ class PeerSelectionDialog {
                                                         .sendFile(
                                                           peer: peer,
                                                           myDeviceId:
-                                                              myDeviceId ?? "",
+                                                              identity.id,
                                                           myDeviceName:
-                                                              myDeviceName ??
-                                                              "Unknown Device",
+                                                              identity.name,
                                                           file: file,
                                                           fileName: upload.name,
                                                           extension:

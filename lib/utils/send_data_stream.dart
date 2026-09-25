@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_transfer_mobile/utils/data_processing.dart';
+import 'package:file_transfer_mobile/utils/security/encryption.dart';
 import 'package:file_transfer_mobile/utils/transfer_protocol.dart';
 
 class SendDataStream {
@@ -27,15 +28,39 @@ class SendDataStream {
       print('Connected to $peerIp');
 
       final fileSize = await file.length();
-      final responseCompleter = Completer<bool>();
       final decoder = MessageDecoder();
+      final encryptionService = DataEncryptionService();
 
-      // 1. Listen ONLY for the acceptance response
+      final responseCompleter = Completer<bool>();
+      final handshakeCompleter = Completer<String>(); // peer's public key
+      var sendCounter = 0; // increments for every message WE encrypt
+
+      // Actively listens for incoming transfer requests for peers
       final subscription = socket.listen(
         (data) {
-          decoder.addData(data, (message) {
+          decoder.addData(data, (message) async {
+            // Get the receriving peer's publicKey from the handshake process
+            if(!handshakeCompleter.isCompleted) {
+              try {
+                final json = jsonDecode(utf8.decode(message));
+                if (json['type'] == 'handshake') {
+                  final key = json['publicKey'] as String?;
+                  if (key != null) {
+                    handshakeCompleter.complete(key);
+                  } else {
+                    handshakeCompleter.completeError('Missing publicKey in handshake reply');
+                  }
+                }
+              } catch (e) {
+                print('Error decoding handshake reply: $e');
+                handshakeCompleter.completeError(e);
+              }
+              return;
+            }
+
             try {
-              final json = jsonDecode(utf8.decode(message));
+              final decrypted = await encryptionService.decryptChunk(Uint8List.fromList(message));
+              final json = jsonDecode(utf8.decode(decrypted));
               if (json['type'] == 'transferResponse') {
                 final accepted = json['accepted'] == true;
                 if (!responseCompleter.isCompleted) {
@@ -52,6 +77,7 @@ class SendDataStream {
         },
         onError: (error) {
           print('Socket error: $error');
+          if (!handshakeCompleter.isCompleted) handshakeCompleter.completeError(error);
           if (!responseCompleter.isCompleted) responseCompleter.complete(false);
         },
         onDone: () {
@@ -59,20 +85,26 @@ class SendDataStream {
         },
       );
       
-      // Send hanshake to identify the recipient peer
-      socket.add(frameJson(buildHandshake(deviceId: myDeviceId)));
+      // Get publicKey from the DataEncryptionService
+      final myPublicKey = await encryptionService.generatePublicKey();
+
+      // Send hanshake to identify the recipient peer (myDeviceId, myPublicKey)
+      socket.add(frameJson(buildHandshake(deviceId: myDeviceId, pubicKey: myPublicKey)));
       
-      // Send Transfer Request
-      socket.add(
-        frameJson(
-          buildTransferRequest(
-            fileName: fileName,
-            fileSize: fileSize,
-            extension: extension,
-            deviceName: myDeviceName,
-          ),
-        ),
-      );
+      // Wait for the receiver's handshake reply, which must also carry publicKey
+      final peerPublicKey = await handshakeCompleter.future;
+      await encryptionService.deriveSessionKeys(peerPublicKey, isSender: true);
+
+      // Send Transfer Request (encrypted)
+
+      final requestBytes = utf8.encode(jsonEncode(buildTransferRequest(
+        fileName: fileName,
+        fileSize: fileSize,
+        extension: extension,
+        deviceName: myDeviceName,
+      )));
+
+      socket.add(frameMessage(await encryptionService.encryptChunk(requestBytes, sendCounter++)));
 
       await socket.flush();
       print('Handshake and Transfer Request sent. Awaiting peer response...');
@@ -90,16 +122,14 @@ class SendDataStream {
 
       print('Peer accepted transfer! Starting binary stream...');
 
-      // Send file metadata
-      socket.add(
-        frameJson(
-          buildFileMeta(
-            fileName: fileName,
-            fileSize: fileSize,
-            extension: extension,
-          ),
-        ),
-      );
+      // Send file metadata (encrypted)
+      final metaBytes = utf8.encode(jsonEncode(buildFileMeta(
+        fileName: fileName,
+        fileSize: fileSize,
+        extension: extension,
+      )));
+
+      socket.add(frameMessage(await encryptionService.encryptChunk(metaBytes, sendCounter++)));
       await socket.flush();
 
       // Stream binary chunks sequentially
@@ -107,13 +137,15 @@ class SendDataStream {
       final fileStream = file.openRead();
 
       await for (final chunk in fileStream) {
-        socket.add(frameMessage(Uint8List.fromList(chunk)));
+        final encryptedChunk = await encryptionService.encryptChunk(chunk, sendCounter++); // ecrypts each chunk
+        socket.add(frameMessage(encryptedChunk));
         sentBytes += chunk.length;
         onProgress?.call(sentBytes / fileSize);
       }
 
-      // Send completion signal
-      socket.add(frameJson(buildTransferComplete()));
+      // Send completion signal (encrypted)
+      final completeBytes = utf8.encode(jsonEncode(buildTransferComplete()));
+      socket.add(frameMessage(await encryptionService.encryptChunk(completeBytes, sendCounter++)));
       await socket.flush();
       print('File streaming finished successfully.');
 

@@ -69,6 +69,15 @@ class TransferNotifier extends StateNotifier<TransferState> {
     state = state.copyWith(clearRequest: true);
   }
 
+  Future<void> sendFiles({
+    required Peer peer,
+    required String myDeviceId,
+    required String myDeviceName,
+    required List<dynamic> uploads,
+  }) async {
+    
+  }
+
   Future<void> sendFile({
     required Peer peer,
     required String myDeviceId,
@@ -130,7 +139,7 @@ class TransferNotifier extends StateNotifier<TransferState> {
   }
 
   void reset() {
-    state = const TransferState();
+    state = const TransferState(); // clean transfer state
   }
 }
 

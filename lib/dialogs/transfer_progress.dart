@@ -66,7 +66,19 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
           const SizedBox(height: 4),
           Text('Size: ${_formatSize(widget.fileSize)}'),
           const SizedBox(height: 16),
-          LinearProgressIndicator(value: _progress),
+          // LinearProgressIndicator(value: _progress),
+          TweenAnimationBuilder<double>(
+  tween: Tween<double>(
+    begin: 0,
+    end: _progress,
+  ),
+  duration: const Duration(milliseconds: 300),
+  builder: (context, value, _) {
+    return LinearProgressIndicator(
+      value: value,
+    );
+  },
+),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
