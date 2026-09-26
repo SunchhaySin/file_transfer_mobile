@@ -46,11 +46,22 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
+	<!-- Permission to use Local Network to discovery nearby devices -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app uses your local network to discover and connect to nearby devices for peer-to-peer communication.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_p2ptransfer._tcp</string>
 	</array>
+
+	<!-- Permission to write saved photos/videos to the Apple Photos Library -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We need permission to save received photos and videos to your Photo Library.</string>
+
+	<!-- Enable Document Folder visibility in the iOS 'Files' app under 'On My iPhone' -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

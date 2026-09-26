@@ -1,7 +1,23 @@
 import 'dart:io';
+// import 'package:file_transfer_mobile/utils/data_reconstruction.dart';
 
 class TcpListener {
   ServerSocket? _serverSocket;
+  
+  // Callback to ask UI/Provider for user approval on incoming requests
+  // final Future<bool> Function(String fileName, int fileSize, String deviceId)? onRequestConsent;
+  // final void Function(double progress)? onProgress;
+  // final void Function(String filePath)? onFileComplete;
+
+  final void Function(Socket client, List<int> data)? onDataReceived;
+  final void Function(Socket client)? onClientConnected;
+  final void Function(Socket client)? onClientDisconnected;
+
+  TcpListener({
+    this.onDataReceived,
+    this.onClientConnected,
+    this.onClientDisconnected,
+  });
 
   Future<void> start() async {
     // Bind to all available network interfaces, port 0 = let OS pick a free port
@@ -12,11 +28,24 @@ class TcpListener {
       print('Incoming connection from ${client.remoteAddress.address}:${client.remotePort}');
 
       client.listen(
-        (data) => print('Received: ${String.fromCharCodes(data)}'),
-        onDone: () => print('Client disconnected'),
-        onError: (e) => print('Socket error: $e'),
-      );
-    });
+          (data)  {
+            onDataReceived?.call(client, data);
+          },
+          onDone: () {
+            print('Client ${client.remoteAddress.address} disconnected');
+            onClientDisconnected?.call(client);
+            client.destroy();
+          },
+          onError: (error) {
+            print('Socket error on ${client.remoteAddress.address}: $error');
+            client.destroy();
+          },
+        );
+      },
+      onError: (error) {
+        print('Server socket error: $error');
+      },
+    );
   }
 
   Future<void> stop() async {

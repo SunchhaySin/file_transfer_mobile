@@ -1,10 +1,14 @@
-import 'dart:io';
+import 'package:file_transfer_mobile/providers/transfer_listener_provider.dart';
+import 'package:file_transfer_mobile/utils/identify_device.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_transfer_mobile/utils/peer_discovery.dart';
+import 'package:file_transfer_mobile/utils/file_saver.dart';
 import 'package:file_transfer_mobile/dialogs/peer_selection.dart';
 import 'package:file_transfer_mobile/providers/peer_provider.dart';
+import 'package:file_transfer_mobile/dialogs/transfer_request.dart';
+import 'package:file_transfer_mobile/dialogs/transfer_complete.dart';
+import 'package:file_transfer_mobile/dialogs/transfer_progress.dart';
 import 'package:file_transfer_mobile/widgets/uploaded_file_tile.dart';
 import 'package:file_transfer_mobile/utils/internet_connectivity.dart';
 
@@ -25,13 +29,95 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<PlatformFile> uploadData = []; // stores the user uploaded file / media
-  final internetConnectivity = InternetConnectivity(); // initialized internetConnectivty check to check for a internet connection in the app
+  final internetConnectivity = InternetConnectivity(); // check for a internet connection in the app
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(peerProvider.notifier).start());
+    // Future.microtask(() => ref.read(peerProvider.notifier).start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      initailizeServices();
+    });
     _setupInternetCheck();
+  }
+
+  TransferProgressController? progressController;
+  int? port;
+
+  void initailizeServices() async {
+    final identity = ref.read(deviceIdentityProvider);
+    port = await ref.read(transferListenerProvider.notifier).start(
+          // 1. Consent Step
+          onRequestConsent: (fileName, fileSize, deviceId, deviceName) async {
+            if (!mounted) return false;
+            final displayName = ref
+              .read(peerProvider.notifier)
+              .resolveDisplayName(deviceId, deviceName); // this device name is a placeholder for when deviceID can't be resovled
+
+            final bool userAccepted = await TransferRequestDialog.show(
+              context: context,
+              fileName: fileName,
+              fileSize: fileSize,
+              deviceName: displayName,
+              deviceId: deviceId,
+            );
+
+            // If accepted, pop open the standalone Progress Dialog
+            if (userAccepted && mounted) {
+              TransferProgressDialog.show(
+                context: context,
+                fileName: fileName,
+                fileSize: fileSize,
+                onReady: (controller) {
+                  progressController = controller;
+                },
+              );
+            }
+
+            return userAccepted;
+          },
+
+          // 2. Stream Progress Updates -> Drives TransferProgressDialog
+          onProgress: (progress) {
+            progressController?.updateProgress(progress);
+          },
+
+          // 3. Bytes Complete in RAM -> Close Progress Dialog & Open Save/Discard Dialog
+          onFileComplete: (fileName, fileBytes) async {
+            if (!mounted) return;
+
+            // Dismiss the progress dialog
+            progressController?.close();
+            progressController = null;
+
+            // Pop up the Save / Discard Dialog
+            final TransferCompleteChoice? choice =
+                await TransferCompleteDialog.show(
+                  context: context,
+                  fileName: fileName,
+                  fileSize: fileBytes.length,
+                );
+
+            if (choice == TransferCompleteChoice.save) {
+              if(!mounted) return;
+
+              await SafeFileSaver.save(
+                context: context,
+                fileName: fileName,
+                fileBytes: fileBytes,
+              );
+            } else {
+              print('User selected to DISCARD file. RAM reclaimed.');
+            }
+          },
+        );
+        
+        // use the port returned from the listener to engage the peer discovery service
+        await ref.read(peerProvider.notifier).start(
+          deviceId: identity.id,
+          deviceName: identity.name,
+          port: port!,
+        );
   }
 
   Future<void> _setupInternetCheck() async {
@@ -44,20 +130,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     };
 
     await internetConnectivity.start();
-  }
-
-  Future<void> _connectToPeer(Peer peer) async {
-    try {
-      final socket = await Socket.connect(
-        peer.ip,
-        peer.port,
-        timeout: const Duration(seconds: 5),
-      );
-      print('Connected to ${peer.name}!');
-      socket.add('hello from device'.codeUnits);
-    } catch (e) {
-      print('Connection failed: $e');
-    }
   }
 
   Future<void> _pickFile() async {
@@ -103,20 +175,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
       return;
     }
-    final uploadedExtensions = uploadData.map((u) => u.extension).toList(); // collects all the uploaded file data by their extensions
-    PeerSelectionDialog(uploadsByExtensions: uploadedExtensions).openDialog(context, ref);
+    final uploadedExtensions = uploadData
+        .map((u) => u.extension)
+        .toList(); // collects all the uploaded file data by their extensions
+    PeerSelectionDialog(
+      uploadsByExtensions: uploadedExtensions,
+      allUploads: uploadData,
+    ).openDialog(context, ref);
   }
 
   @override
   void dispose() {
     internetConnectivity.stop();
+    ref.read(peerProvider.notifier).stop();
+    ref.read(transferListenerProvider.notifier).stop();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     // final peers = ref.watch(peerProvider); // get discovered peers from peer provider
-    final port = ref.read(peerProvider.notifier).myPort; // get connected port
+    // final port = ref.read(peerProvider.notifier).myPort; // get connected port
 
     return Scaffold(
       backgroundColor: Colors.green.shade200,
@@ -299,9 +378,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                     SizedBox(height: 10),
 
-                    Text(
-                      'App listening on port: ${port ?? "starting..."}',
-                    ),
+                    Text('App listening on port: ${port ?? "starting..."}'),
 
                     SizedBox(height: 10),
 

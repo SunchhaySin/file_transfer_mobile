@@ -1,21 +1,18 @@
-import 'dart:math';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:file_transfer_mobile/utils/tcp_socket.dart';
 import 'package:file_transfer_mobile/utils/peer_discovery.dart';
 
 class PeerNotifier extends StateNotifier<List<Peer>> {
   PeerNotifier() : super([]);
-
   PeerDiscovery? peerDiscovery;
-  final TcpListener listener = TcpListener(); // inilialize the TcpListneterTest
 
-  Future<void> start() async {
-    await listener.start(); // bind socket first, so we know the real port
+  Future<void> start({
+    required String deviceId,
+    required String deviceName,
+    required int port,
+  }) async {
+    await stop();
 
-    final deviceId =
-        'device-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(9999)}'; // unique identifiable deviceId for bonsior broadcast and discovery
-
-    peerDiscovery = PeerDiscovery(myDeviceId: deviceId, myPort: listener.port!);
+    peerDiscovery = PeerDiscovery(myDeviceId: deviceId, myDeviceName: deviceName, myPort: port);
     peerDiscovery!.onPeersChanged = (updatedPeers) {
       state = List.from(updatedPeers);
     };
@@ -23,17 +20,32 @@ class PeerNotifier extends StateNotifier<List<Peer>> {
     await peerDiscovery!.start();
   }
 
-  int? get myPort => listener.port;
+  String resolveDisplayName(String senderDeviceId, String sentName) {
+    for (final p in state) {
+      if (p.id == senderDeviceId) {
+        final cleaned = prettifyHostname(p.ip);
+        if (cleaned.isNotEmpty) return cleaned;
+      }
+    }
+    return sentName; // sender not in the peer list, use what it sent
+  }
+
+  String prettifyHostname(String host) {
+    return host
+        .replaceAll(RegExp(r'\d{1,3}(\.\d{1,3}){3}'), '')
+        .replaceAll(RegExp(r'\.local\.?', caseSensitive: false), '')
+        .replaceAll('-', ' ')
+        .trim();
+  }
 
   Future<void> stop() async {
     await peerDiscovery?.stop();
-    await listener.stop();
+    state = [];
   }
 
   @override
   void dispose() {
     peerDiscovery?.stop();
-    listener.stop();
     super.dispose();
   }
 }
@@ -47,7 +59,7 @@ class SelectedPeerNotifier extends StateNotifier<Peer?> {
   SelectedPeerNotifier() : super(null); // no peer selected initially
 
   void selectPeer(Peer peer) {
-    state = peer; // replaces whatever was selected before — only one at a time
+    state = peer; // replace peers if a different one is select
   }
 
   void clearSelection() {

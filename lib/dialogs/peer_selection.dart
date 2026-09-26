@@ -1,12 +1,18 @@
+import 'dart:io';
+import 'package:file_transfer_mobile/utils/identify_device.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_transfer_mobile/providers/peer_provider.dart';
 import 'package:file_transfer_mobile/widgets/peer_avatar_icon.dart';
+import 'package:file_transfer_mobile/providers/transfer_provider.dart';
 
 class PeerSelectionDialog {
   final List<dynamic> uploadsByExtensions;
-
-  const PeerSelectionDialog({required this.uploadsByExtensions});
+  final List<dynamic> allUploads;
+  const PeerSelectionDialog({
+    required this.uploadsByExtensions,
+    required this.allUploads,
+  });
 
   String formatUploadsByExtensions() {
     const imageExtensions = {'jpg', 'jpeg', 'png', 'heic'};
@@ -63,7 +69,7 @@ class PeerSelectionDialog {
           ),
           backgroundColor: Colors.white,
           child: Padding(
-            padding: EdgeInsets.only(top: 24, bottom: 12, right: 24, left: 24),
+            padding: const EdgeInsets.all(18.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -73,14 +79,15 @@ class PeerSelectionDialog {
                     Text(
                       "Available Devices",
                       style: TextStyle(
-                        fontWeight: FontWeight.w500,
-                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
                       ),
                     ),
-                    SizedBox(width: 12),
+                    SizedBox(width: 8),
                     Icon(
                       Icons.broadcast_on_personal_outlined,
                       color: Colors.green.shade700,
+                      size: 26,
                     ),
                   ],
                 ),
@@ -92,145 +99,226 @@ class PeerSelectionDialog {
 
                 Consumer(
                   builder: (context, ref, _) {
-                    final peers = ref.watch(peerProvider); // get discovered peers from peer provider
+                    final peers = ref.watch(
+                      peerProvider,
+                    ); // get discovered peers from peer provider
 
                     return peers.isNotEmpty
-                        ? SizedBox(
-                            height: 150,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  height: 100,
-                                  child: ListView.builder(
-                                    itemCount: peers.length,
-                                    scrollDirection: Axis.horizontal,
-                                    itemBuilder: (context, index) {
-                                      final peer = peers[index];
-                                      final displayName = prettifyHostname(
-                                        peer.ip,
-                                      );
-                                      final peerName = peer.ip.isNotEmpty
-                                          ? prettifyHostname(
-                                              peer.ip,
-                                            )[0].toUpperCase()
-                                          : '?'; // IP contains the actual deviceName from mDNS
+                        ? Column(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                height: 105,
+                                child: ListView.builder(
+                                  itemCount: peers.length,
+                                  scrollDirection: Axis.horizontal,
+                                  itemBuilder: (context, index) {
+                                    final peer = peers[index];
+                                    final displayName = prettifyHostname(
+                                      peer.ip,
+                                    );
+                                    final peerName = peer.ip.isNotEmpty
+                                        ? prettifyHostname(
+                                            peer.ip,
+                                          )[0].toUpperCase()
+                                        : '?'; // IP contains the actual deviceName from mDNS
 
-                                      // Consumes the provider widgets functions to select/deselect the peers
-                                      return Consumer(
-                                        builder: (context, ref, _) {
-                                          final selectedPeer = ref.watch(
-                                            selectedPeerProvider,
-                                          );
-                                          final isSelected =
-                                              selectedPeer?.name == peer.name;
-
-                                          return GestureDetector(
-                                            onTap: () {
-                                              final notifier = ref.read(
-                                                selectedPeerProvider.notifier,
-                                              );
-                                              if (isSelected) {
-                                                notifier.clearSelection();
-                                              } else {
-                                                notifier.selectPeer(peer);
-                                              }
-                                            },
-                                            child: PeerAvatarIcon(displayName: displayName, peerName: peerName, isSelected: isSelected)
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
-                                ),
-
-                                SizedBox(height: 4),
-
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 4,
-                                        horizontal: 8,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(50),
-                                        border: Border.all(
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                      child: InkWell(
-                                        onTap: () =>
-                                            Navigator.pop(dialogContext),
-                                        child: Text(
-                                          "Cancel",
-                                          style: TextStyle(
-                                            color: Colors.black54,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(width: 4),
-
-                                    // This consumes the selectedpeer from the peer provider and updates the button's UI
-                                    Consumer(
+                                    // Consumes the provider widgets functions to select/deselect the peers
+                                    return Consumer(
                                       builder: (context, ref, _) {
                                         final selectedPeer = ref.watch(
                                           selectedPeerProvider,
                                         );
+                                        final isSelected =
+                                            selectedPeer?.id == peer.id;
 
-                                        return Container(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: 4,
-                                            horizontal: 8,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              50,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.green.shade200,
-                                            ),
-                                            color: Colors.green.shade400,
-                                          ),
-                                          child: InkWell(
-                                            onTap: selectedPeer == null
-                                                ? () => {
-                                                    ScaffoldMessenger.of(
-                                                      context,
-                                                    ).showSnackBar(
-                                                      SnackBar(
-                                                        content: const Text(
-                                                          "No device selected for transfer",
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  }
-                                                : () {
-                                                    Navigator.pop(
-                                                      dialogContext,
-                                                    );
-                                                    // trigger actual send/transfer logic here, using selectedPeer
-                                                  },
-                                            child: Text(
-                                              selectedPeer == null
-                                                  ? "Share"
-                                                  : "Sharing with ${prettifyHostname(selectedPeer.ip)}",
-                                              overflow: TextOverflow.ellipsis,
-                                              maxLines: 1,
-                                              style: TextStyle(
-                                                color: Colors.black87,
-                                              ),
-                                            ),
+                                        return GestureDetector(
+                                          onTap: () {
+                                            final notifier = ref.read(
+                                              selectedPeerProvider.notifier,
+                                            );
+                                            if (isSelected) {
+                                              notifier.clearSelection();
+                                            } else {
+                                              notifier.selectPeer(peer);
+                                            }
+                                          },
+                                          child: PeerAvatarIcon(
+                                            displayName: displayName,
+                                            peerName: peerName,
+                                            isSelected: isSelected,
                                           ),
                                         );
                                       },
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 ),
-                              ],
-                            ),
+                              ),
+
+                              Consumer(
+                                builder: (context, ref, _) {
+                                  final selectedPeer = ref.watch(
+                                    selectedPeerProvider,
+                                  );
+
+                                  return SizedBox(
+                                    height: 20,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          selectedPeer == null
+                                              ? Icons.touch_app_outlined
+                                              : Icons.offline_share,
+                                          size: 16,
+                                          color: selectedPeer == null
+                                              ? Colors.black45
+                                              : Colors.green.shade700,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            selectedPeer == null
+                                                ? "Select a device"
+                                                : "Sharing with ${prettifyHostname(selectedPeer.ip)}",
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                              color: selectedPeer == null
+                                                  ? Colors.black45
+                                                  : Colors.black87,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                              SizedBox(height: 6),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.all(10),
+                                        side: BorderSide(color: Colors.black54),
+                                        backgroundColor: Color.fromARGB(
+                                          255,
+                                          246,
+                                          245,
+                                          245,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext),
+                                      child: Text(
+                                        "Cancel",
+                                        style: TextStyle(
+                                          color: Colors.black54,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+
+                                  // This consumes the selectedpeer from the peer provider and updates the button's UI
+                                  Consumer(
+                                    builder: (context, ref, _) {
+                                      final selectedPeer = ref.watch(
+                                        selectedPeerProvider,
+                                      );
+                                      return Expanded(
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            padding: EdgeInsets.all(10),
+                                            backgroundColor: const Color(
+                                              0xFF4CAF50,
+                                            ),
+                                            foregroundColor: Colors.black,
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                          onPressed: selectedPeer == null
+                                              ? () => {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: const Text(
+                                                        "No device selected for transfer",
+                                                      ),
+                                                    ),
+                                                  ),
+                                                }
+                                              : () async {
+                                                  // Save before dialog gets unmounted
+                                                  final transferNotifier = ref
+                                                      .read(
+                                                        transferProvider
+                                                            .notifier,
+                                                      );
+                                                  final identity = ref.read(
+                                                    deviceIdentityProvider,
+                                                  );
+                                                  final peer = selectedPeer;
+
+                                                  Navigator.pop(dialogContext);
+
+                                                  for (final upload
+                                                      in allUploads) {
+                                                    final file = File(
+                                                      upload.path!,
+                                                    );
+
+                                                    await transferNotifier
+                                                        .sendFile(
+                                                          peer: peer,
+                                                          myDeviceId:
+                                                              identity.id,
+                                                          myDeviceName:
+                                                              identity.name,
+                                                          file: file,
+                                                          fileName: upload.name,
+                                                          extension:
+                                                              upload
+                                                                  .extension ??
+                                                              '',
+                                                        );
+                                                  }
+                                                },
+                                          child: Text(
+                                            "Share",
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              color: Colors.black87,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        // ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
                           )
                         : const SizedBox(
                             height: 40,
@@ -257,7 +345,9 @@ class PeerSelectionDialog {
         );
       },
     ).then((_) {
-      ref.read(selectedPeerProvider.notifier).clearSelection(); // Part of the Future (showDialog) event
+      ref
+          .read(selectedPeerProvider.notifier)
+          .clearSelection(); // Part of the Future (showDialog) event
     });
   }
 }
