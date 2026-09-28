@@ -81,7 +81,7 @@ class PeerDiscovery {
           discoveredPeers.removeWhere((p) => p.id == event.service.name);
           onPeersChanged?.call(discoveredPeers);
           break;
-
+ 
         default:
           // BonsoirDiscoveryServiceUpdatedEvent and others — ignore for now
           break;

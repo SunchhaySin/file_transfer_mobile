@@ -1,63 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:file_transfer_mobile/helpers/iconGetter.dart';
+import 'package:file_transfer_mobile/helpers/size_formatter.dart';
 
 class TransferRequestDialog extends StatelessWidget {
-  final String fileName;
+  final List<dynamic> uploads;
+  final int fileCount;
   final int fileSize;
   final String deviceId;
   final String deviceName;
 
   const TransferRequestDialog({
     super.key,
-    required this.fileName,
+    required this.uploads,
+    required this.fileCount,
     required this.fileSize,
     required this.deviceId,
     required this.deviceName,
   });
 
-  /// Helper to convert bytes to human-readable size
-  String _formatFileSize(int bytes) {
-    if (bytes <= 0) return "0 B";
-    if (bytes < 1024) return "$bytes B";
-    if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)} KB";
-    if (bytes < 1024 * 1024 * 1024) {
-      return "${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB";
-    }
-    return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB";
-  }
 
-  IconData _getFileIcon(String filename) {
-    final ext = filename.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'heic':
-        return Icons.image_outlined;
-      case 'mov':
-      case 'mp4':
-        return Icons.videocam_outlined;
-      case 'pdf':
-        return Icons.picture_as_pdf_outlined;
-      case 'zip':
-        return Icons.folder_zip_outlined;
-      default:
-        return Icons.insert_drive_file_outlined;
-    }
-  }
+  final formatSize = const FormatFileSize();
+  final iconHelper = const Icongetter();
 
   /// Static helper method to trigger the dialog directly
   static Future<bool> show({
     required BuildContext context,
-    required String fileName,
+    required List<dynamic> uploads,
+    required int fileCount,
     required int fileSize,
     required String deviceName,
     required String deviceId,
   }) async {
     final result = await showDialog<bool>(
       context: context,
-      barrierDismissible: false, 
+      barrierDismissible: false,
       builder: (context) => TransferRequestDialog(
-        fileName: fileName,
+        // fileName: fileName,
+        uploads: uploads,
+        fileCount: fileCount,
         fileSize: fileSize,
         deviceId: deviceId,
         deviceName: deviceName,
@@ -72,9 +52,7 @@ class TransferRequestDialog extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       elevation: 8,
       child: Padding(
         padding: const EdgeInsets.all(18.0),
@@ -87,80 +65,107 @@ class TransferRequestDialog extends StatelessWidget {
               children: [
                 Text(
                   'Transfer Request',
-                  style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 18,
-                          ),
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
                 ),
-                SizedBox(width: 8,),
-                Icon(Icons.install_mobile_outlined, color: Colors.green.shade700)
+                SizedBox(width: 8),
+                Icon(
+                  Icons.install_mobile_outlined,
+                  color: Colors.green.shade700,
+                ),
               ],
             ),
             Divider(color: Colors.black54, height: 18),
-            
-            SizedBox(height: 6,),
+
+            SizedBox(height: 6),
             Text(
-              'Device "$deviceName" wants to send you a file.',
+              'Device "$deviceName" wants to send you $fileCount ${fileCount == 1 ? 'file' : 'files'}.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            
+            SizedBox(height: 12),
 
             Container(
               padding: const EdgeInsets.all(10),
+              constraints: const BoxConstraints(maxHeight: 220),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                  0.5,
+                ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: theme.colorScheme.outlineVariant.withOpacity(0.5),
                 ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(12.0),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [Colors.green.shade400, Colors.green.shade700],
-                      ),
-                    ),
-                    child: Icon(
-                      _getFileIcon(fileName),
-                      color: Colors.black
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fileName,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: fileCount,
+                itemBuilder: (context, index) {
+                  final file = uploads[index];
+                  final fileName = file['fileName'];
+                  final fileExt = file['extension'];
+                  final fileSizeIndividual = file['fileSize'];
+
+                  return Column(
+                    children: [
+                      if (index > 0) const Divider(height: 16, thickness: 1),
+
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12.0),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  Colors.green.shade400,
+                                  Colors.green.shade700,
+                                ],
+                              ),
+                            ),
+                            child: Icon(
+                              iconHelper.getFileIcon(fileExt),
+                              color: Colors.black,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          _formatFileSize(fileSize),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54
-                          )
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  fileName,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  formatSize.formatFileSize(fileSizeIndividual),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
-           SizedBox(height: 15),
+
+            SizedBox(height: 8),
+            Text("Total Size: ${formatSize.formatFileSize(fileSize)}"),
+            SizedBox(height: 8),
 
             // Action Buttons
             Row(
@@ -193,7 +198,7 @@ class TransferRequestDialog extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.all(10),
                       backgroundColor: const Color(0xFF4CAF50),
-                      foregroundColor: Colors.black,         
+                      foregroundColor: Colors.black,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -202,9 +207,7 @@ class TransferRequestDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(true),
                     child: const Text(
                       'Accept',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),

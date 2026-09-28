@@ -1,35 +1,38 @@
-import 'dart:io';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:file_transfer_mobile/utils/send_data_stream.dart';
-import 'package:file_transfer_mobile/utils/peer_discovery.dart';
+import 'package:file_transfer_mobile/utils/transfer/send_data_stream.dart';
+import 'package:file_transfer_mobile/utils/socket_services/peer_discovery.dart';
 
 enum TransferStatus { idle, connecting, sending, completed, failed, declined }
 
 class TransferRequest {
   final String senderDeviceId;
-  final String fileName;
-  final int fileSize;
-  final String extension;
+  final List<dynamic> uploads;
+  // final String fileName;
+  // final int fileSize;
+  // final String extension;
 
   const TransferRequest({
     required this.senderDeviceId,
-    required this.fileName,
-    required this.fileSize,
-    required this.extension,
+    required this.uploads,
+    // required this.fileName,
+    // required this.fileSize,
+    // required this.extension,
   });
 }
 
 class TransferState {
   final TransferStatus status;
   final double progress; // 0.0 to 1.0
-  final String? fileName;
+  // final String? fileName;
+  final List<dynamic>? uploads;
   final String? errorMessage;
   final TransferRequest? activeRequest;
 
   const TransferState({
     this.status = TransferStatus.idle,
     this.progress = 0.0,
-    this.fileName,
+    // this.fileName,
+    this.uploads,
     this.errorMessage,
     this.activeRequest,
   });
@@ -37,7 +40,8 @@ class TransferState {
   TransferState copyWith({
     TransferStatus? status,
     double? progress,
-    String? fileName,
+    // String? fileName,
+    List<dynamic>? uploads,
     String? errorMessage,
     TransferRequest? activeRequest,
     bool clearRequest = false,
@@ -45,7 +49,8 @@ class TransferState {
     return TransferState(
       status: status ?? this.status,
       progress: progress ?? this.progress,
-      fileName: fileName ?? this.fileName,
+      // fileName: fileName ?? this.fileName,
+      uploads: uploads,
       errorMessage: errorMessage ?? this.errorMessage,
       activeRequest: clearRequest ? null : (activeRequest ?? this.activeRequest),
     );
@@ -57,48 +62,52 @@ class TransferNotifier extends StateNotifier<TransferState> {
 
   final SendDataStream sender = SendDataStream();
 
-  void setIncomingRequest(TransferRequest request) {
-    state = state.copyWith(
-      status: TransferStatus.connecting,
-      fileName: request.fileName,
-      activeRequest: request,
-    );
-  }
+  // void setIncomingRequest(TransferRequest request) {
+  //   state = state.copyWith(
+  //     status: TransferStatus.connecting,
+  //     // fileName: request.fileName,
+  //     uploads: request.uploads,
+  //     activeRequest: request,
+  //   );
+  // }
 
-  void clearRequest() {
-    state = state.copyWith(clearRequest: true);
-  }
+  // void clearRequest() {
+  //   state = state.copyWith(clearRequest: true);
+  // }
+
+  // Future<void> sendFiles({
+  //   required Peer peer,
+  //   required String myDeviceId,
+  //   required String myDeviceName,
+  //   required List<dynamic> uploads,
+  // }) async {
+    
+  // }
 
   Future<void> sendFiles({
     required Peer peer,
     required String myDeviceId,
     required String myDeviceName,
+    // required File file,
     required List<dynamic> uploads,
+    // required String fileName,
+    // required String extension,
   }) async {
-    
-  }
-
-  Future<void> sendFile({
-    required Peer peer,
-    required String myDeviceId,
-    required String myDeviceName,
-    required File file,
-    required String fileName,
-    required String extension,
-  }) async {
-    final fileSize = await file.length();
-    state = TransferState(status: TransferStatus.connecting, fileName: fileName);
+    // final fileSize = await file.length();
+    state = TransferState(status: TransferStatus.connecting, uploads: uploads);
 
     final outgoingRequest = TransferRequest(
       senderDeviceId: myDeviceId,
-      fileName: fileName,
-      fileSize: fileSize,
-      extension: extension,
+      // fileName: fileName,
+      // fileSize: fileSize,
+      // extension: extension,
+      uploads: uploads,
     );
 
     state = TransferState(
       status: TransferStatus.connecting,
-      fileName: fileName,
+      // fileName: fileName,
+      uploads: uploads,
       activeRequest: outgoingRequest,
     );
 
@@ -108,9 +117,10 @@ class TransferNotifier extends StateNotifier<TransferState> {
         peerPort: peer.port,
         myDeviceId: myDeviceId,
         myDeviceName: myDeviceName,
-        file: file,
-        fileName: fileName,
-        extension: extension,
+        uploads: uploads ,
+        // file: file,
+        // fileName: fileName,
+        // extension: extension,
         onProgress: (progress) {
           state = state.copyWith(
             status: TransferStatus.sending,
@@ -132,7 +142,6 @@ class TransferNotifier extends StateNotifier<TransferState> {
         );
       }
 
-      state = state.copyWith(status: TransferStatus.completed, progress: 1.0, clearRequest: true,);
     } catch (e) {
       state = state.copyWith(status: TransferStatus.failed, errorMessage: e.toString(), clearRequest: true,);
     }

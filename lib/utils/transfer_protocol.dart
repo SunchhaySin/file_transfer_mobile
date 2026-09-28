@@ -1,8 +1,5 @@
 // Construct a JSON shaped message used for file processing and handling
 
-enum MessageType { handshake, fileMeta, fileChunk, transferComplete }
-
-/// Sent first, right after the socket connects.
 Map<String, dynamic> buildHandshake({
   required String deviceId,
   String? deviceName,
@@ -17,16 +14,16 @@ Map<String, dynamic> buildHandshake({
 }
 
 Map<String, dynamic> buildTransferRequest({
-  required String fileName,
-  required int fileSize,
-  required String extension,
+  required int fileCount,
+  required int totalSize,
   required String deviceName,
+  required List<Map<String, dynamic>> files,
 }) {
   return {
     'type': 'transferRequest',
-    'fileName': fileName,
-    'fileSize': fileSize,
-    'extension': extension,
+    'fileCount': fileCount,
+    'totalSize': totalSize,
+    'files': files,
     'deviceName': deviceName,
 
   };

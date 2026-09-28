@@ -25,7 +25,7 @@ class MessageDecoder {
   final BytesBuilder _buffer = BytesBuilder(copy: false);
   int? _expectedLength;
 
-  void addData(List<int> chunk, void Function(Uint8List message) onMessage) {
+  Future<void> addData(List<int> chunk, Future<void> Function(Uint8List message) onMessage) async {
     _buffer.add(chunk);
 
     while (true) {
@@ -51,7 +51,7 @@ class MessageDecoder {
       final allBytes = _buffer.takeBytes();
       final payload = Uint8List.fromList(allBytes.sublist(0, _expectedLength!));
       
-      onMessage(payload);
+      await onMessage(payload);
 
       // Put leftover bytes (start of next frame) back into the buffer
       if (allBytes.length > _expectedLength!) {

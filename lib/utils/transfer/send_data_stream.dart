@@ -12,9 +12,8 @@ class SendDataStream {
     required int peerPort,
     required String myDeviceId,
     required String myDeviceName,
-    required File file,
-    required String fileName,
-    required String extension,
+
+    required List<dynamic> uploads,
     void Function(double progress)? onProgress,
   }) async {
     Socket? socket;
@@ -26,8 +25,8 @@ class SendDataStream {
         timeout: const Duration(seconds: 5),
       );
       print('Connected to $peerIp');
-
-      final fileSize = await file.length();
+      
+  
       final decoder = MessageDecoder();
       final encryptionService = DataEncryptionService();
 
@@ -35,10 +34,13 @@ class SendDataStream {
       final handshakeCompleter = Completer<String>(); // peer's public key
       var sendCounter = 0; // increments for every message WE encrypt
 
-      // Actively listens for incoming transfer requests for peers
+      int sentBytes = 0; // tracks sent bytes for total files in the bulk transfer
+
+      // Actively listens for incoming transfer requests from peers
       final subscription = socket.listen(
         (data) {
           decoder.addData(data, (message) async {
+
             // Get the receriving peer's publicKey from the handshake process
             if(!handshakeCompleter.isCompleted) {
               try {
@@ -58,6 +60,7 @@ class SendDataStream {
               return;
             }
 
+            // Transfer Request Response
             try {
               final decrypted = await encryptionService.decryptChunk(Uint8List.fromList(message));
               final json = jsonDecode(utf8.decode(decrypted));
@@ -96,11 +99,30 @@ class SendDataStream {
       await encryptionService.deriveSessionKeys(peerPublicKey, isSender: true);
 
       // Send Transfer Request (encrypted)
+      final files = <Map<String, dynamic>>[];
 
+       // Total file size (Bulk Upload)
+      int totalSize = 0;
+
+      for (final upload in uploads) {
+        final file = File(upload.path!);
+        final fileSize = await file.length();
+
+        // increment the total size with each of the indiviudal file sizes 
+        totalSize += fileSize;
+
+        files.add({
+          'fileName': upload.name,
+          'fileSize': fileSize,
+          'extension': upload.extension ?? '',
+        });
+      }
+      
+      // Build and send Transfer Request to the receiving peer
       final requestBytes = utf8.encode(jsonEncode(buildTransferRequest(
-        fileName: fileName,
-        fileSize: fileSize,
-        extension: extension,
+        files: files,
+        totalSize: totalSize,
+        fileCount: files.length,
         deviceName: myDeviceName,
       )));
 
@@ -122,34 +144,43 @@ class SendDataStream {
 
       print('Peer accepted transfer! Starting binary stream...');
 
-      // Send file metadata (encrypted)
-      final metaBytes = utf8.encode(jsonEncode(buildFileMeta(
-        fileName: fileName,
-        fileSize: fileSize,
-        extension: extension,
-      )));
+      // Send file metadata (encrypted) (Batch)
+      for(final upload in uploads) {
+        final file = File(upload.path!);
+        final fileName = upload.name;
+        final extension = upload.extension ?? '';
+        final fileSize = await file.length();
 
-      socket.add(frameMessage(await encryptionService.encryptChunk(metaBytes, sendCounter++)));
-      await socket.flush();
+        print("Starting file: ${fileName}");
 
-      // Stream binary chunks sequentially
-      int sentBytes = 0;
-      final fileStream = file.openRead();
+        final metaBytes = utf8.encode(jsonEncode(buildFileMeta(
+          fileName: fileName,
+          fileSize: fileSize,
+          extension: extension,
+        )));
 
-      await for (final chunk in fileStream) {
-        final encryptedChunk = await encryptionService.encryptChunk(chunk, sendCounter++); // ecrypts each chunk
-        socket.add(frameMessage(encryptedChunk));
-        sentBytes += chunk.length;
-        onProgress?.call(sentBytes / fileSize);
+        socket.add(frameMessage(await encryptionService.encryptChunk(metaBytes, sendCounter++)));
+        await socket.flush();
+
+        // Stream binary chunks sequentially
+        final fileStream = file.openRead();
+
+        await for (final chunk in fileStream) {
+          final encryptedChunk = await encryptionService.encryptChunk(chunk, sendCounter++); // ecrypts each chunk
+          socket.add(frameMessage(encryptedChunk));
+          sentBytes += chunk.length;
+          onProgress?.call(sentBytes / totalSize);
+        }
       }
 
-      // Send completion signal (encrypted)
-      final completeBytes = utf8.encode(jsonEncode(buildTransferComplete()));
-      socket.add(frameMessage(await encryptionService.encryptChunk(completeBytes, sendCounter++)));
-      await socket.flush();
-      print('File streaming finished successfully.');
+        // Send completion signal (encrypted) 
+        final completeBytes = utf8.encode(jsonEncode(buildTransferComplete()));
+        socket.add(frameMessage(await encryptionService.encryptChunk(completeBytes, sendCounter++)));
+        await socket.flush();
+        print('File streaming finished.');
 
       return true;
+      
     } catch (e) {
       print('Failed to send file: $e');
       return false;
