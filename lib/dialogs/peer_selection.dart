@@ -1,5 +1,4 @@
-import 'dart:io';
-import 'package:file_transfer_mobile/utils/identify_device.dart';
+import 'package:file_transfer_mobile/utils/misc/identify_device.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_transfer_mobile/providers/peer_provider.dart';
@@ -279,28 +278,14 @@ class PeerSelectionDialog {
                                                   final peer = selectedPeer;
 
                                                   Navigator.pop(dialogContext);
-
-                                                  for (final upload
-                                                      in allUploads) {
-                                                    final file = File(
-                                                      upload.path!,
-                                                    );
-
-                                                    await transferNotifier
-                                                        .sendFile(
-                                                          peer: peer,
-                                                          myDeviceId:
-                                                              identity.id,
-                                                          myDeviceName:
-                                                              identity.name,
-                                                          file: file,
-                                                          fileName: upload.name,
-                                                          extension:
-                                                              upload
-                                                                  .extension ??
-                                                              '',
-                                                        );
-                                                  }
+                                                  
+                                                  await transferNotifier
+                                                      .sendFiles(
+                                                        peer: peer,
+                                                        myDeviceId: identity.id,
+                                                        myDeviceName: identity.name,
+                                                        uploads: allUploads,
+                                                      );
                                                 },
                                           child: Text(
                                             "Share",

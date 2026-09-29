@@ -1,5 +1,4 @@
-import 'package:file_transfer_mobile/providers/transfer_listener_provider.dart';
-import 'package:file_transfer_mobile/utils/identify_device.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +9,9 @@ import 'package:file_transfer_mobile/dialogs/transfer_request.dart';
 import 'package:file_transfer_mobile/dialogs/transfer_complete.dart';
 import 'package:file_transfer_mobile/dialogs/transfer_progress.dart';
 import 'package:file_transfer_mobile/widgets/uploaded_file_tile.dart';
-import 'package:file_transfer_mobile/utils/internet_connectivity.dart';
+import 'package:file_transfer_mobile/utils/misc/identify_device.dart';
+import 'package:file_transfer_mobile/utils/misc/internet_connectivity.dart';
+import 'package:file_transfer_mobile/providers/transfer_listener_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -29,98 +30,109 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<PlatformFile> uploadData = []; // stores the user uploaded file / media
-  final internetConnectivity = InternetConnectivity(); // check for a internet connection in the app
+  final internetConnectivity =
+      InternetConnectivity(); // check for a internet connection in the app
 
   @override
   void initState() {
     super.initState();
-    // Future.microtask(() => ref.read(peerProvider.notifier).start());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       initailizeServices();
     });
-    _setupInternetCheck();
+    setupInternetCheck();
   }
 
-  TransferProgressController? progressController;
+  final Map<Socket, TransferProgressController> progressControllers = {}; // Store in pairs so each transfer get its own set of progres bar
   int? port;
 
   void initailizeServices() async {
     final identity = ref.read(deviceIdentityProvider);
-    port = await ref.read(transferListenerProvider.notifier).start(
-          // 1. Consent Step
-          onRequestConsent: (fileName, fileSize, deviceId, deviceName) async {
-            if (!mounted) return false;
-            final displayName = ref
-              .read(peerProvider.notifier)
-              .resolveDisplayName(deviceId, deviceName); // this device name is a placeholder for when deviceID can't be resovled
+    port = await ref
+        .read(transferListenerProvider.notifier)
+        .start(
+          // 1. Transfer Request
+          onRequestConsent:
+              (uploads, totalSize, fileCount, deviceId, deviceName, client) async {
+                if (!mounted) return false;
+                final displayName = ref
+                    .read(peerProvider.notifier)
+                    .resolveDisplayName(
+                      deviceId,
+                      deviceName,
+                    ); // this device name is a placeholder for when deviceID can't be resovled
 
-            final bool userAccepted = await TransferRequestDialog.show(
-              context: context,
-              fileName: fileName,
-              fileSize: fileSize,
-              deviceName: displayName,
-              deviceId: deviceId,
-            );
+                final bool userAccepted = await TransferRequestDialog.show(
+                  context: context,
+                  uploads: uploads,
+                  fileCount: fileCount,
+                  fileSize: totalSize,
+                  deviceName: displayName,
+                  deviceId: deviceId,
+                );
 
-            // If accepted, pop open the standalone Progress Dialog
-            if (userAccepted && mounted) {
-              TransferProgressDialog.show(
-                context: context,
-                fileName: fileName,
-                fileSize: fileSize,
-                onReady: (controller) {
-                  progressController = controller;
-                },
-              );
-            }
+                // If accepted, pop open the standalone Progress Dialog
+                if (userAccepted && mounted) {
+                  TransferProgressDialog.show(
+                    context: context,
+                    uploads: uploads,
+                    fileSize: totalSize,
+                    onReady: (controller) {
+                      progressControllers[client] = controller;
+                    },
+                  );
+                }
 
-            return userAccepted;
-          },
+                return userAccepted;
+              },
 
           // 2. Stream Progress Updates -> Drives TransferProgressDialog
-          onProgress: (progress) {
-            progressController?.updateProgress(progress);
+          onProgress: (client, progress) {
+            progressControllers[client]?.updateProgress(progress);
           },
 
           // 3. Bytes Complete in RAM -> Close Progress Dialog & Open Save/Discard Dialog
-          onFileComplete: (fileName, fileBytes) async {
+
+          onTransferComplete: (client, files) async {
+            if (!mounted) return;
+
+            // Wait before closing the progress dialog, to give time for the progess bar's animation
+            await Future.delayed(const Duration(milliseconds: 500));
+
             if (!mounted) return;
 
             // Dismiss the progress dialog
-            progressController?.close();
-            progressController = null;
+            progressControllers[client]?.close();
+            progressControllers.remove(client);
 
-            // Pop up the Save / Discard Dialog
             final TransferCompleteChoice? choice =
                 await TransferCompleteDialog.show(
                   context: context,
-                  fileName: fileName,
-                  fileSize: fileBytes.length,
+                  files: files,
                 );
 
-            if (choice == TransferCompleteChoice.save) {
-              if(!mounted) return;
+            if (!mounted) return;
 
-              await SafeFileSaver.save(
-                context: context,
-                fileName: fileName,
-                fileBytes: fileBytes,
-              );
+            if (choice == TransferCompleteChoice.save) {
+              for (final file in files) {
+                await SafeFileSaver.save(
+                  context: context,
+                  fileName: file.fileName,
+                  fileBytes: file.fileBytes,
+                );
+              }
             } else {
-              print('User selected to DISCARD file. RAM reclaimed.');
+              print('Reciever selected to discard all files');
             }
           },
         );
-        
-        // use the port returned from the listener to engage the peer discovery service
-        await ref.read(peerProvider.notifier).start(
-          deviceId: identity.id,
-          deviceName: identity.name,
-          port: port!,
-        );
+
+    // use the port returned from the listener to engage the peer discovery service
+    await ref
+        .read(peerProvider.notifier)
+        .start(deviceId: identity.id, deviceName: identity.name, port: port!);
   }
 
-  Future<void> _setupInternetCheck() async {
+  Future<void> setupInternetCheck() async {
     internetConnectivity.onModeChanged = (isOnline) {
       if (!mounted) return;
 
@@ -132,36 +144,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await internetConnectivity.start();
   }
 
-  Future<void> _pickFile() async {
+  Future<void> pickFile() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip', 'pdf', 'png', 'jpg', 'jpeg'],
-      allowMultiple: false,
-      withData: false,
+      allowMultiple: true,
+      withData: false, // only collect metadata not the entire file 
     );
 
     if (result != null && result.files.isNotEmpty) {
       setState(() {
-        uploadData.add(result.files.first);
+        uploadData.addAll(result.files);
       });
     }
   }
 
-  Future<void> _pickMedia() async {
+  Future<void> pickMedia() async {
     final result = await FilePicker.pickFiles(
       type: FileType.media,
-      allowMultiple: false,
+      allowMultiple: true,
       withData: false,
     );
 
     if (result != null && result.files.isNotEmpty) {
       setState(() {
-        uploadData.add(result.files.first);
+        uploadData.addAll(result.files);
       });
     }
   }
 
-  void _removeUpload(PlatformFile upload) {
+  void removeUpload(PlatformFile upload) {
     setState(() {
       uploadData.removeWhere((f) => f.path == upload.path);
     });
@@ -194,9 +206,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // final peers = ref.watch(peerProvider); // get discovered peers from peer provider
-    // final port = ref.read(peerProvider.notifier).myPort; // get connected port
-
     return Scaffold(
       backgroundColor: Colors.green.shade200,
       body: SafeArea(
@@ -403,7 +412,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           GestureDetector(
-                            onTap: () => _pickFile(),
+                            onTap: () => pickFile(),
                             child: Container(
                               width: 150,
                               height: 100,
@@ -449,7 +458,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
 
                           GestureDetector(
-                            onTap: () => _pickMedia(),
+                            onTap: () => pickMedia(),
                             child: Container(
                               width: 150,
                               height: 100,
@@ -586,11 +595,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       : isVideo
                                       ? "Video"
                                       : upload.name,
-                                  uploadSize:
-                                      '${(upload.size / (1024 * 1024)).toStringAsFixed(2)} MB',
+                                  uploadSize: upload.size,
                                   uploadExtension: upload.extension ?? "",
-                                  onTap: () => _removeUpload(upload),
-                                ); // remove current uploaded item from uploadData list,);
+                                  onTap: () => removeUpload(upload), // remove current uploaded item from uploadData list
+                                ); 
                               },
                             )
                           : SizedBox.shrink(),

@@ -1,9 +1,11 @@
+import 'package:file_transfer_mobile/helpers/size_formatter.dart';
 import 'package:flutter/material.dart';
+import 'package:file_transfer_mobile/helpers/iconGetter.dart';
 
 class UploadedFileTile extends StatelessWidget {
   final String uploadName;
   final String uploadExtension;
-  final String uploadSize;
+  final int uploadSize;
   final VoidCallback onTap;
 
   const UploadedFileTile({
@@ -15,24 +17,8 @@ class UploadedFileTile extends StatelessWidget {
   });
 
   // Return the matching Icon for each file/media type
-  IconData _iconForExtension(String? extension) {
-    switch (extension?.toLowerCase()) {
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'heic':
-        return Icons.image_outlined;
-      case 'mov':
-      case 'mp4':
-        return Icons.videocam_outlined;
-      case 'pdf':
-        return Icons.picture_as_pdf_outlined;
-      case 'zip':
-        return Icons.folder_zip_outlined;
-      default:
-        return Icons.insert_drive_file_outlined;
-    }
-  }
+  final iconHelper = const Icongetter();
+  final formatSize = const FormatFileSize();
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +33,7 @@ class UploadedFileTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(_iconForExtension(uploadExtension), size: 28),
+            Icon(iconHelper.getFileIcon(uploadExtension), size: 28),
             SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -55,7 +41,7 @@ class UploadedFileTile extends StatelessWidget {
                 children: [
                   Text(uploadName, overflow: TextOverflow.ellipsis, maxLines: 1),
                   Text(
-                    uploadSize,
+                    formatSize.formatFileSize(uploadSize),
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                 ],

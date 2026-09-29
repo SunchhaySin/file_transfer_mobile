@@ -1,18 +1,18 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:file_transfer_mobile/utils/data_reconstruction.dart';
+import 'package:file_transfer_mobile/utils/receive/data_reconstruction.dart';
 
 class TransferReceiver {
   final Map<Socket, FileReconstruction> activeSessions = {};
 
-  final Future<bool> Function(String fileName, int fileSize, String deviceId, String deviceName)? onRequestConsent;
-  final void Function(double progress)? onProgress;
-  final void Function(String fileName, Uint8List fileBytes)? onFileComplete;
+  // Callbacks
+  final Future<bool> Function(List<dynamic> uploads, int totalSize, int fileCount, String deviceId, String deviceName, Socket client)? onRequestConsent;
+  final void Function(Socket client, double progress)? onProgress;
+  final void Function(Socket client, List<ReceivedFile> files)? onTransferComplete;
 
   TransferReceiver({
     this.onRequestConsent,
     this.onProgress,
-    this.onFileComplete,
+    this.onTransferComplete,
   });
 
   /// Called whenever TcpListener receives raw socket data
@@ -21,13 +21,14 @@ class TransferReceiver {
     final reconstruction = activeSessions.putIfAbsent(
       client,
       () => FileReconstruction(
-        onRequestConsent: (fileName, fileSize, deviceId, deviceName) async {
-          return await onRequestConsent?.call(fileName, fileSize, deviceId, deviceName) ?? false;
+        onRequestConsent: (uploads, fileSize, fileCount, deviceId, deviceName) async {
+          return await onRequestConsent?.call(uploads, fileSize, fileCount, deviceId, deviceName, client) ?? false;
         },
-        onProgress: onProgress,
-        onFileComplete: (fileName, fileBytes) {
-          // Pass RAM payload to caller
-          onFileComplete?.call(fileName, fileBytes);
+        onProgress: (progress) {
+          onProgress?.call(client, progress);
+        },
+        onTransferComplete: (files) {
+          onTransferComplete?.call(client, files);
           activeSessions.remove(client);
         },
       ),

@@ -1,6 +1,7 @@
-import 'dart:typed_data';
-import 'package:file_transfer_mobile/utils/transfer_reciever.dart';
-import 'package:file_transfer_mobile/utils/tcp_socket.dart';
+import 'dart:io';
+import 'package:file_transfer_mobile/utils/receive/data_reconstruction.dart';
+import 'package:file_transfer_mobile/utils/receive/transfer_reciever.dart';
+import 'package:file_transfer_mobile/utils/socket_services/tcp_socket.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 
@@ -12,16 +13,16 @@ class TransferListenerProvider extends StateNotifier<int?> {
   TransferReceiver? _receiver;
 
     Future<int> start({
-    Future<bool> Function(String fileName, int fileSize, String deviceId, String deviceName)? onRequestConsent,
-    void Function(double progress)? onProgress,
-    void Function(String fileName, Uint8List fileBytes)? onFileComplete,
+    Future<bool> Function(List<dynamic> uploads, int totalSize, int fileCount, String deviceId, String deviceName, Socket client)? onRequestConsent,
+    void Function(Socket client, double progress)? onProgress,
+    void Function(Socket client, List<ReceivedFile> files)? onTransferComplete,
   }) async {
     await stop();
 
     _receiver = TransferReceiver(
       onRequestConsent: onRequestConsent,
       onProgress: onProgress,
-      onFileComplete: onFileComplete,
+      onTransferComplete: onTransferComplete,
     );
 
     _listener = TcpListener(

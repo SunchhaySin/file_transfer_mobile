@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 class TransferProgressDialog extends StatefulWidget {
-  final String fileName;
+  final List<dynamic> uploads;
   final int fileSize;
 
   const TransferProgressDialog({
     super.key,
-    required this.fileName,
+    required this.uploads,
     required this.fileSize,
   });
 
   static Future<void> show({
     required BuildContext context,
-    required String fileName,
+    required List<dynamic> uploads,
     required int fileSize,
     required Function(TransferProgressController controller) onReady,
   }) {
@@ -25,7 +26,7 @@ class TransferProgressDialog extends StatefulWidget {
         controller._context = dialogContext;
         onReady(controller);
         return TransferProgressDialog(
-          fileName: fileName,
+          uploads: uploads,
           fileSize: fileSize,
           key: controller._key,
         );
@@ -55,43 +56,47 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    // final bool isComplete = _progress >= 1.0;
+
+    return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('Receiving File...'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('File: ${widget.fileName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text('Size: ${_formatSize(widget.fileSize)}'),
-          const SizedBox(height: 16),
-          // LinearProgressIndicator(value: _progress),
-          TweenAnimationBuilder<double>(
-  tween: Tween<double>(
-    begin: 0,
-    end: _progress,
-  ),
-  duration: const Duration(milliseconds: 300),
-  builder: (context, value, _) {
-    return LinearProgressIndicator(
-      value: value,
-    );
-  },
-),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text('${(_progress * 100).toStringAsFixed(1)}%'),
-          ),
-        ],
+      // title: const Text('Transfer Progess...'),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Transfer Progess',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+            ),
+            Divider(color: Colors.black54, height: 18),
+
+            Text('Size: ${_formatSize(widget.fileSize)}'),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 6,
+              child: LinearProgressIndicator(
+                value: _progress,
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text('${(_progress * 100).toStringAsFixed(1)}%'),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class TransferProgressController {
-  final GlobalKey<_TransferProgressDialogState> _key = GlobalKey<_TransferProgressDialogState>();
+  final GlobalKey<_TransferProgressDialogState> _key =
+      GlobalKey<_TransferProgressDialogState>();
   BuildContext? _context;
 
   void updateProgress(double progress) {

@@ -1,6 +1,7 @@
 import 'dart:io';
-import 'dart:math' show min;
+import 'dart:math';
 import 'package:file_saver/file_saver.dart';
+import 'package:file_transfer_mobile/helpers/media_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
@@ -11,16 +12,10 @@ enum SaveResult { savedToGallery, savedToFiles, cancelled, failed }
 class SafeFileSaver {
   SafeFileSaver._();
 
-  static const Set<String> imageExtensions = {
-    'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp',
-  };
+  static const imageExtensions = MediaExtensions.imageExtensions;
+  static const videoExtensions = MediaExtensions.videoExtensions;
 
-  static const Set<String> videoExtensions = {
-    'mp4', 'mov', 'm4v', '3gp',
-  };
-
-  /// Size of each write. Writing in chunks avoids making one giant native
-  /// copy of the whole file and lets the UI render frames between chunks.
+  // Save file 1MB per write
   static const int _chunkSize = 1024 * 1024; // 1 MB
 
   static Future<SaveResult> save({
@@ -29,12 +24,11 @@ class SafeFileSaver {
     required Uint8List fileBytes,
     String? album,
   }) async {
-    // Capture these BEFORE any await so we never touch `context` across
-    // async gaps.
+
     final navigator = Navigator.of(context, rootNavigator: true);
     final messenger = ScaffoldMessenger.maybeOf(context);
 
-    // ---- Parse file name (handles names with multiple dots) ----
+    // Parse file name 
     final safeName = formatFileName(fileName);
     final dotIndex = safeName.lastIndexOf('.');
     final ext = dotIndex > 0 && dotIndex < safeName.length - 1
@@ -45,7 +39,7 @@ class SafeFileSaver {
     final isGalImage = imageExtensions.contains(ext);
     final isGalVideo = videoExtensions.contains(ext);
 
-    // ---- Spinner helpers ----
+    // Spinner 
     var spinnerOpen = false;
 
     Future<void> showSpinner() async {
@@ -83,9 +77,8 @@ class SafeFileSaver {
     try {
       await showSpinner();
 
-      // -----------------------------------------------------------
-      // 1) Try the native gallery for images / videos
-      // -----------------------------------------------------------
+
+      // Try the native gallery for images / videos
       if (isGalImage || isGalVideo) {
         final savedToGallery = await _saveToGallery(
           fileName: safeName,
@@ -102,9 +95,7 @@ class SafeFileSaver {
         // otherwise fall through to FileSaver
       }
 
-      // -----------------------------------------------------------
-      // 2) Fallback: FileSaver for documents / ZIPs or if Gal failed
-      // -----------------------------------------------------------
+      // Fallback: FileSaver for documents / ZIPs or if Gal failed
       final String? path = await FileSaver.instance.saveFile(
         name: nameWithoutExt,
         bytes: fileBytes,
@@ -114,7 +105,7 @@ class SafeFileSaver {
       hideSpinner();
 
       if (path != null) {
-        toast('Saved $safeName to Files / Storage', isError: false);
+        toast('Saved to Files / Storage', isError: false);
         return SaveResult.savedToFiles;
       }
       return SaveResult.cancelled;
@@ -129,9 +120,7 @@ class SafeFileSaver {
     }
   }
 
-  // ---------------------------------------------------------------
   // Gallery save (returns true on success, false if caller should fall back)
-  // ---------------------------------------------------------------
   static Future<bool> _saveToGallery({
     required String fileName,
     required Uint8List bytes,
@@ -160,7 +149,7 @@ class SafeFileSaver {
       ).create(recursive: true);
 
       final tempFile = File('${tempSubDir.path}/$fileName');
-      await _writeBytesChunked(tempFile, bytes);
+      await writeBytesChunked(tempFile, bytes);
 
       if (isVideo) {
         await Gal.putVideo(tempFile.path, album: album);
@@ -184,10 +173,9 @@ class SafeFileSaver {
     }
   }
 
-  // ---------------------------------------------------------------
+
   // Chunked write: async, low memory overhead, UI stays responsive
-  // ---------------------------------------------------------------
-  static Future<void> _writeBytesChunked(File file, Uint8List bytes) async {
+  static Future<void> writeBytesChunked(File file, Uint8List bytes) async {
     final raf = await file.open(mode: FileMode.write);
     try {
       for (var offset = 0; offset < bytes.length; offset += _chunkSize) {
@@ -200,9 +188,7 @@ class SafeFileSaver {
     }
   }
 
-  // ---------------------------------------------------------------
   // Remove characters that are illegal in file names on some platforms
-  // ---------------------------------------------------------------
   static String formatFileName(String name) {
     final cleaned = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
     return cleaned.isEmpty ? 'file' : cleaned;

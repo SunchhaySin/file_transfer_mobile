@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:file_transfer_mobile/utils/peer_discovery.dart';
+import 'package:file_transfer_mobile/utils/socket_services/peer_discovery.dart';
 
 class PeerNotifier extends StateNotifier<List<Peer>> {
   PeerNotifier() : super([]);
