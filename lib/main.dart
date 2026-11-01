@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_transfer_mobile/screens/splash_screen.dart';
+import 'package:file_transfer_mobile/utils/performance/metrics.dart';
 
 void main() {
+  Metrics.markAppStart();
+  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => Metrics.mark('first_frame_ms'), // the first frame has been drawn
+  );
   runApp(const ProviderScope(child: MyApp()));
 }
 

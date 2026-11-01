@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:file_transfer_mobile/utils/socket_services/peer_discovery.dart';
+import 'package:file_transfer_mobile/utils/performance/metrics.dart';
 
 class PeerNotifier extends StateNotifier<List<Peer>> {
   PeerNotifier() : super([]);
@@ -18,6 +19,7 @@ class PeerNotifier extends StateNotifier<List<Peer>> {
     };
 
     await peerDiscovery!.start();
+    Metrics.mark('services_ready_ms');
   }
 
   String resolveDisplayName(String senderDeviceId, String sentName) {

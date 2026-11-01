@@ -1,4 +1,5 @@
 import 'package:bonsoir/bonsoir.dart';
+import 'package:file_transfer_mobile/utils/performance/metrics.dart';
 
 const String serviceType = '_p2ptransfer._tcp'; // match with the service name defined in info.plist
 
@@ -21,6 +22,9 @@ class PeerDiscovery {
 
   BonsoirBroadcast? _broadcast;
   BonsoirDiscovery? _discovery;
+
+  final Stopwatch _discoverySw = Stopwatch();
+  bool _firstPeerLogged = false; 
 
   final List<Peer> discoveredPeers = [];
 
@@ -74,6 +78,13 @@ class PeerDiscovery {
             ip: resolved.host!,
             port: resolved.port,
           ));
+
+          // logged once, when the first real peer is resolved
+          if (!_firstPeerLogged) {
+            _firstPeerLogged = true;
+            Metrics.log('discovery_ms', _discoverySw.elapsedMilliseconds);
+          }
+
           onPeersChanged?.call(discoveredPeers);
           break;
 
@@ -88,6 +99,7 @@ class PeerDiscovery {
       }
     });
 
+    _discoverySw.start(); // start stopwatch right before discovery begins
     await _discovery!.start();
   }
 

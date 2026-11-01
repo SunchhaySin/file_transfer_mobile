@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_transfer_mobile/utils/data_processing.dart';
+import 'package:file_transfer_mobile/utils/performance/metrics.dart';
 import 'package:file_transfer_mobile/utils/security/encryption.dart';
 import 'package:file_transfer_mobile/utils/transfer_protocol.dart';
 
@@ -19,11 +20,13 @@ class SendDataStream {
     Socket? socket;
 
     try {
+      final connectSw = Stopwatch()..start();
       socket = await Socket.connect(
         peerIp,
         peerPort,
         timeout: const Duration(seconds: 5),
       );
+      Metrics.log('connect_ms', connectSw.elapsedMilliseconds);
       print('Connected to $peerIp');
       
   
